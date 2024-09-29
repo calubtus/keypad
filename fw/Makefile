@@ -1,10 +1,11 @@
 PORT=COM3
 MCU=atmega32u4
-CFLAGS=-g -Wall -mcall-prologues -mmcu=$(MCU) -Os
+CFLAGS=-DF_CPU=16000000UL -g -Wall -mcall-prologues -mmcu=$(MCU) -Os --param=min-pagesize=0 # TODO: Need to check on this last flag param=min-pagesize. 
+# It appaers to be a bug in GCC version 12.
 LDFLAGS=-Wl,-gc-sections -Wl,-relax
 CC=avr-gcc
 TARGET=main
-OBJECT_FILES=main.o led.o usb.o
+OBJECT_FILES=main.o led.o usb.o uart.o
 
 all: $(TARGET).hex
 

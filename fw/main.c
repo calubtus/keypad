@@ -1,7 +1,7 @@
-#define F_CPU 16000000UL
 #include <avr/io.h>
 #include <util/delay.h>
 #include "usb.h"
+#include "uart.h"
 
 int main(void) {
     // Set port C pin 7 as an output
@@ -17,15 +17,17 @@ int main(void) {
     // Set port F pin 5 as an output
     DDRF |= (1 << PORTF5);
 
-    sendColor(0xff, 0x00, 0x00); // green, red, blue
+    sendColor(0x00, 0xff, 0x00); // green, red, blue
 
-	usb_init();
 
+    uart_init();
+	// usb_init();
     while (1) {
         // Check if switch is pressed
         if (!(PINF & (1 << PORTF6))) {
             // Switch is pressed, turn on the LED
             PORTC |= (1 << PORTC7);
+            uart_print("b");
         } else {
             // Switch is not pressed, turn off the LED
             PORTC &= ~(1 << PORTC7);
