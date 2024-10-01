@@ -1,6 +1,7 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <stddef.h>
+#include "usb.h"
 
 #define USB_VERSION 0x0200
 
@@ -171,57 +172,66 @@ const usbDescriptors_t usbDescriptors = {
 	}
 };
 
+volatile uint8_t usbAddressConfig = 0;
+
 void usb_init() {
-    // Power On the USB interface
-    UHWCON |= (1<<UVREGE); // Enable the USB pad regulator
-    USBCON = (1<<USBE) | (1<<FRZCLK); // Enable the USB controller. TODO: Check if FRZCLK is needed
+	// cli(); // TODO: might delete this afterwards
+	usbAddressConfig = 0;
+    UHWCON = (1<<UVREGE); // Power on the USB pads regulator
+    USBCON = (1<<USBE) | (1<<FRZCLK) | (1<<OTGPADE); // Enable the USB controller and freeze the clock prior configuration
 
-    // Configure PLL interface
-    PLLCSR |= (1<<PINDIV); // Using a 16MHz clock source, set PLL input prescaler 1:2
+    PLLCSR |=  (1<<PINDIV); // Set PLL input prescaler 1:2 since using a 16MHz clock source
+    PLLCSR |= (1 << PLLE); // Enable PLL and start calibration
 
-    // Enable PLL
-    PLLCSR |= (1 << PLLE); // Enable and start PLL
-
-    // Check PLL lock
     while (!(PLLCSR & (1<<PLOCK))) { 
         // Wait until PLL is locked to the reference clock
     }
 
-    // Enable USB interface
-    USBCON = ((1<<USBE)|(1<<OTGPADE)); // Enable the USB controller and enable the VBUS pad
-    USBCON &= ~(1 << FRZCLK); // Start USB clock
+    USBCON |= ((1<<USBE)|(1<<OTGPADE)); // Enable the USB controller and enable the VBUS pad
+    USBCON &= ~(1 << FRZCLK); // Unfreeze the USB controller clock
 
-    // Configure USB interface
-    UDCON &= ~((1<<LSM) | (1<<RMWKUP) | (1<<DETACH)); // Set full speed mode and attach the device via pull-up resistor. TODO: Check if RMWKUP is needed
+    UDCON &= ~((1<<LSM) | (1<<DETACH)); // Set full speed mode and attach USB device
 
-    // Enable the usb general interrupt flags for end of reset and start of frame
-    UDIEN |= (1 << EORSTE) | (1 << SOFE);
+    UDIEN |= (1 << EORSTE) | (1 << SOFE); // Enable the USB interrupt flags for end of reset and start of frame
 
 	usbConfigurationValue = 0; // Device is unconfigured
+	usbAddressConfig = 0;
+	sei();
 }
 
 // USB General Interrupt Service Routine
 ISR(USB_GEN_vect) {
+	// usbAddressConfig++;
+	uint8_t udint_bits = UDINT;
+	UDINT = 0;
     // Todo: What if we save interrupt contents into a variable? Check for advantages
 
     // Check if end of reset interrupt flag as occured to begin configuration of control transfer endpoint
-    if (UDINT & (1 << EORSTI)) {
-        UDINT &= ~(0x01 << EORSTI); // Clear interrupt flag
-
-        // Control transfer endpoint activation flow
+    if (udint_bits & (1 << EORSTI)) {
+        // UDINT &= ~(0x01 << EORSTI); // Clear interrupt flag
+		// usbAddressConfig++;
         UENUM = ENDPOINT_0_CONTROL_TRANSFER; // Select the endpoint
         UECONX = (1 << EPEN); // Activate the endpoint
         UECFG0X = ENDPOINT_CONFIG_1(ENDPOINT_TYPE_CONTROL, ENDPOINT_DIRECTION_OUT); // Configure the endpoint type and direction
 		UECFG1X = ENDPOINT_CONFIG_2(ENDPOINT_SIZE_32, ENDPOINT_BANK_SINGLE, ENDPOINT_ALLOCATION_SET); // Configure endpoint size and bank parametrization
+
+		// UERST = 1;  // Reset Endpoint
+		// UERST = 0;
+		while(!(UESTA0X & (1 << CFGOK))) {  
+			// Check if endpoint configuration was successful
+    	}
         UEIENX = (1 << RXSTPE);  // Enable the "received setup packet" interrupt flag
         // Todo: Do we need to check if setup was successful?
         // Todo: Do we need to reset endpoint?
-        usbConfigurationValue = 0; // Device is unconfigured 
+        usbConfigurationValue = 0; // Device is unconfigured TODO why do I need to have this here?
+		usbAddressConfig |= (1 << 0);
+		
     }
 
     // Check if start of frame interrupt flag as occured to know when USB "Start Of Frame" PID (SOF) has been detected
     // Note here is where we would report keyword presses to the USB host   
-	if (UDINT & (1 << SOFI)) {
+	if (udint_bits & (1 << SOFI)) {
+		// UDINT &= ~(1 << SOFI);
 		if (usbConfigurationValue) {
             // Unsure of what I want to do here...
             // Seems like we release the FIFO buffer for host to use when needed. With this we also flush the buffer
@@ -232,6 +242,7 @@ ISR(USB_GEN_vect) {
 
 // USB Endpoint Interrupt Service Routine
 ISR(USB_COM_vect) { 
+	usbAddressConfig |= (1 << 6);
     // Setup packet format (8 bytes)
 	uint8_t bmRequestType;
 	uint8_t bRequest;
@@ -248,7 +259,7 @@ ISR(USB_COM_vect) {
 
     // Select the endpoint number so that the CPU can then access to the various endpoint registers and data
     UENUM = ENDPOINT_0_CONTROL_TRANSFER;
-
+	// usbAddressConfig |= (1 << 1);
     // Check if a new setup packet has been received by reading interrupt flag RXSTPI
     if (UEINTX & (1 << RXSTPI)) {
         // Read the data from the current bank
@@ -319,6 +330,7 @@ ISR(USB_COM_vect) {
 			}
 			// Apperantly you are not suppose to do this at the same time. RIP
 			UDADDR = wValue | (1<<ADDEN); // Record the received address and enable the USB device address
+			usbAddressConfig |= (1 << 7);
 			return;
 		}
 		if (bRequest == SET_CONFIGURATION && bmRequestType == 0x00) {

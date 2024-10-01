@@ -1,7 +1,10 @@
+#include <stdio.h>
 #include <avr/io.h>
 #include <util/delay.h>
 #include "usb.h"
 #include "uart.h"
+#include <avr/interrupt.h>
+char buffer[40];  // Buffer for formatted string
 
 int main(void) {
     // Set port C pin 7 as an output
@@ -21,13 +24,14 @@ int main(void) {
 
 
     uart_init();
-	// usb_init();
+	usb_init();
     while (1) {
         // Check if switch is pressed
         if (!(PINF & (1 << PORTF6))) {
             // Switch is pressed, turn on the LED
             PORTC |= (1 << PORTC7);
-            uart_print("b");
+            sprintf(buffer, "usbAddressConfig=%d, UESTA0X=%d\r\n", usbAddressConfig, UESTA0X);
+            uart_print(buffer);
         } else {
             // Switch is not pressed, turn off the LED
             PORTC &= ~(1 << PORTC7);
