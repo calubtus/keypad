@@ -1,8 +1,7 @@
-#define BAUD 38400UL // TODO: Unsure why this ends up mapping to a 19200 baud rate for PuTTY
-
 #include <avr/io.h>
-#include <util/setbaud.h>
 #include "uart.h"
+
+#include <util/setbaud.h>
 
 void uart_init(void){
     // Set the BAUD rate

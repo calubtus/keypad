@@ -7,10 +7,13 @@
 char buffer[40];  // Buffer for formatted string
 
 int main(void) {
-    // Set port C pin 7 as an output
-    DDRC |= (1 << PORTC7);
-    // turn off the LED
-    PORTC &= ~(1 << PORTC7);
+    // Set LED(Green) at PC6
+    DDRC |= (1 << PORTC6);
+    PORTC &= ~(1 << PORTC6);
+
+    // Set LED(Red) at PE6
+    DDRE |= (1 << PORTE6);
+    PORTE &= ~(1 << PORTE6);
 
     // Set port F pin 6 as an input
     DDRF &= ~(1 << PORTF6);
@@ -19,24 +22,24 @@ int main(void) {
 
     // Set port F pin 5 as an output
     DDRF |= (1 << PORTF5);
+    PORTF |= (1 << PORTF5);
 
-    sendColor(0x00, 0xff, 0x00); // green, red, blue
-
+    // Need to find a new pin for LED programming.
+    // sendColor(0x00, 0xff, 0x00); // green, red, blue
 
     uart_init();
 	usb_init();
     while (1) {
+
         // Check if switch is pressed
         if (!(PINF & (1 << PORTF6))) {
-            // Switch is pressed, turn on the LED
-            PORTC |= (1 << PORTC7);
-            sprintf(buffer, "usbAddressConfig=%d, UESTA0X=%d\r\n", usbAddressConfig, UESTA0X);
+            PORTC |= (1 << PORTC6);
+            sprintf(buffer, "usbAddressConfig=%x\r\n", usbAddressConfig);
             uart_print(buffer);
         } else {
             // Switch is not pressed, turn off the LED
-            PORTC &= ~(1 << PORTC7);
+            PORTC &= ~(1 << PORTC6);
         }
-
         _delay_ms(50); // Debounce delay
     }
 }

@@ -1,4 +1,4 @@
-PORT=COM3
+PORT=COM5
 MCU=atmega32u4
 CFLAGS=-DF_CPU=16000000UL -g -Wall -mcall-prologues -mmcu=$(MCU) -Os --param=min-pagesize=0 # TODO: Need to check on this last flag param=min-pagesize. 
 # It appaers to be a bug in GCC version 12.
