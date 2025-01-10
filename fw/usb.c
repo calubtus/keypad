@@ -52,6 +52,8 @@
 #define DESCRIPTOR_TYPE_CONFIGURATION  	0x02
 #define DESCRIPTOR_TYPE_INTERFACE  		0x04
 
+#define DESCRIPTOR_TYPE_HID_REPORT		0x22
+
 #define USB_CLASS_NONE      			0x00
 #define USB_SUBCLASS_NONE   			0x00
 #define USB_PROTOCOL_NONE   			0x00
@@ -74,8 +76,15 @@
 #define SET_CONFIGURATION 	0x09
 #define GET_INTERFACE 		0x0A
 #define SET_INTERFACE 		0x0B
+//Class HID Specific Request
+#define SET_IDLE			0x0A
+#define SET_REPORT			0x09
 
 volatile uint8_t usbConfigurationValue = 0; // When non-zero device is is configured and respective stored value holds selected configuration
+// hid related variables
+volatile uint16_t usbIdleValue = 0;
+volatile uint16_t usbIdleCounter = 0;
+volatile uint8_t keyboard_leds = 0;
 
 // See USB 2.0 Specification Table 9-8
 typedef struct {
@@ -331,6 +340,9 @@ ISR(USB_COM_vect) {
 		uart_print(" ");
 		itoa((wLength & 0xFF), buffer, 10);  // Convert uint8_t to string (base 10)
 		uart_print(buffer);
+		uart_print(" sizeof hidReportDescriptor: ");
+		itoa(sizeof(hidReportDescriptor), buffer, 10);  // Convert uint8_t to string (base 10)
+		uart_print(buffer);
 		uart_print("\r\n");
 
         /* 
@@ -343,7 +355,7 @@ ISR(USB_COM_vect) {
         */
         UEINTX = ~((1<<RXSTPI) | (1<<RXOUTI) | (1<<TXINI)); // Clear flags. Why am I clearing these out and in flags?
 
-        if (bRequest == GET_DESCRIPTOR && bmRequestType == 0x80) {
+        if (bRequest == GET_DESCRIPTOR && (bmRequestType == 0x80 || bmRequestType == 0x82)) {
 			uart_print("GET_DESCRIPTOR\t");
 			uint8_t descriptorType = (wValue >> 8);
 	        uint8_t descriptorIndex = (wValue & 0xFF);
@@ -362,9 +374,11 @@ ISR(USB_COM_vect) {
                     descriptorLength = (sizeof(configurationDescriptor_t) + sizeof(interfaceDescriptor_t) + sizeof(hidDescriptor_t) + sizeof(endpointDescriptor_t));
 					descriptorAddr = (uint8_t*)&usbDescriptors.configurationDescriptor;
                 break;
-                // case STRING_DESCRIPTOR_TYPE:
-				// 	// Pending
-                // break;
+                case DESCRIPTOR_TYPE_HID_REPORT:
+					uart_print("Selecting DESCRIPTOR_TYPE_HID_REPORT\r\n");
+					descriptorLength = sizeof(hidReportDescriptor);
+					descriptorAddr = hidReportDescriptor;
+                break;
                 default:
 					uart_print("Stalling...\r\n");
                     UECONX = (1 << STALLRQ) | (1 << EPEN); //stall
@@ -419,6 +433,25 @@ ISR(USB_COM_vect) {
 			}
 			UEDATX = usbConfigurationValue;
 			UEINTX &= ~(1 << TXINI);
+			return;
+		}
+        if (bRequest == SET_REPORT && bmRequestType == 0x22) {
+			uart_print("SET_REPORT\r\n");
+			//   while (!(UEINTX & (1 << RXOUTI)));
+				// This is the opposite of the TXINI one, we are waiting until
+				// the banks are ready for reading instead of for writing
+			keyboard_leds = UEDATX;
+
+			UEINTX &= ~(1 << TXINI);  // Send ACK and clear TX bit
+			UEINTX &= ~(1 << RXOUTI);
+			return;
+        }
+		if (bRequest == SET_IDLE && bmRequestType == 0x22xxxx) {
+			uart_print("SET_IDLE\r\n");
+			usbIdleValue = wValue;
+			usbIdleCounter = 0;
+
+			UEINTX &= ~(1 << TXINI);  // Send ACK and clear TX bit
 			return;
 		}
 		if (bRequest == GET_STATUS) {
